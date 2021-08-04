@@ -12,5 +12,5 @@ Maintainer: Nicholas Kron - n.kron@umiami.edu
 data: directory for data used in downstream R analysis  
 --annotation_data : raw annotation files for building annotation objects in R for downstream analysis  
 --metadata : metadata on animals, RNA extractions, and samples used in downstream R analysis  
---r_data : destination for storage of intermediate R data. (not presents as listed in the gitignore file)
+--r_data : destination for storage of intermediate R data. (not presents as listed in the gitignore file)  
 scripts: scripts used for data analysis in this study
