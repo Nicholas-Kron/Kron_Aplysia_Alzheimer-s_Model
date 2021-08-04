@@ -1,0 +1,12 @@
+.Rproj.user
+/scripts/.Rhistory
+/scripts/OGLdpf.log
+.RData
+.Ruserdata
+/data/r_data/*
+/figures/*
+/data/salmon_files/*
+/results/*
+/data/annotation_data/GCF_000002075.1_AplCal3.0_genomic.gff
+/data/datasets/*
+/scripts/Aplysia_Alzheimers_DE_Overlap.Rmd

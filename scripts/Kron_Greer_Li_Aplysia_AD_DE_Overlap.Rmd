@@ -1,0 +1,308 @@
+---
+title: "Aplysia_ALzheimers_DE_overlap"
+author: "Nick Kron"
+date: "9/22/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo = FALSE, message=FALSE, error=FALSE}
+
+library(org.Hs.eg.db)
+library(clusterProfiler)
+library(ComplexHeatmap)
+library(VennDiagram)
+library(tidyverse)
+library(dplyr)
+
+```
+
+```{r load data, echo = FALSE, message=FALSE, error=FALSE }
+
+load(file = "../data/r_data/annot.R")
+load(file = "../data/r_data/metadata.R")
+load(file = "../data/r_data/res.bsc.R")
+load(file = "../data/r_data/res.pvc.R")
+
+
+uniprots <- Rkeys(org.Hs.egUNIPROT)
+uniprot2symbol <- AnnotationDbi::select(org.Hs.eg.db, uniprots, "SYMBOL", "UNIPROT")
+uniprot2ENTREZ <- AnnotationDbi::select(org.Hs.eg.db, uniprots, "ENTREZID", "UNIPROT")
+KEGG2ENTREZ <- AnnotationDbi::select(org.Hs.eg.db, uniprots, "ONTOLOGY", "UNIPROT")
+keytypes(org.Hs.eg.db)
+
+AcTx2Symbol <- uniprot2symbol %>% inner_join(uniprot2ENTREZ) %>% 
+  inner_join(AcTxAnot %>% dplyr::select(tx, prot, Entry), by = c("UNIPROT" = "Entry")) %>%
+   unique()
+
+
+AcTx2Symbol
+
+```
+
+
+```{r}
+
+
+load(file = "../data/r_data/AplCalGFF3v1.21_Tabular.R")
+AcProt2HsUniprot <- read.table(file = "../data/annotation_data/AplCal3.0prot2HomoSapiensUNIPROT.txt", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+AcProt2HsUniprot <- AcProt2HsUniprot %>% filter(evalue <= 0.0001)
+
+prot2UNIPROT <- AcProt2HsUniprot %>%
+  dplyr::select(qseqid, sseqid, evalue) %>%
+  mutate(UNIPROT = str_extract(sseqid, pattern = "\\|[aA-zZ,0-9]+\\|") %>% str_remove_all(., "\\|"),
+         Gene = str_extract(sseqid, pattern = "[aA-zZ,0-9]+_HUMAN$")%>% str_remove_all(., "_HUMAN"),
+         prot = str_remove(qseqid, pattern = "[.][0-9 -]+")  )%>%
+  dplyr::select(-sseqid) %>%
+  rename(prot_version = "qseqid", Hs_Gene = "Gene") %>%
+  unique()
+
+AcTxAnot <- inner_join(Complete_AplCal_map,prot2UNIPROT) %>%  arrange(UNIPROT, evalue) %>% distinct(UNIPROT, tx, prot, gene, .keep_all = TRUE) %>%
+  inner_join(uniprot2ENTREZ)
+ 
+
+
+```
+
+
+```{r collect Aplysia genes of interest, echo = FALSE, message=FALSE, error=FALSE }
+
+bsc_clust <- c(
+  "1" = "B1",
+  "2" = "B3",
+  "3" = "B2",
+  "5" = "B4"
+)
+
+
+res.bsc_patterns$clust <- bsc_clust[as.character(res.bsc_patterns$cluster)]
+res.bsc_clusters$clust <- bsc_clust[as.character(res.bsc_clusters$cluster)]
+
+res.bsc_clusters <- res.bsc_clusters %>% mutate( direction = 
+                               ifelse(clust %in% c("B1","B2"), "UP","DOWN")
+                               ) 
+
+bsc_clusters <- split(res.bsc_clusters, f = res.bsc_clusters$clust)
+names(bsc_clusters) <- unique(res.bsc_clusters$clust)
+
+pvc_clust <- c(
+  "1" = "P1",
+  "3" = "P2",
+  "5" = "P3",
+  "4" = "P4",
+  "8" = "P5"
+)
+
+
+res.pvc_patterns$clust <- pvc_clust[as.character(res.pvc_patterns$cluster)]
+res.pvc_clusters$clust <- pvc_clust[as.character(res.pvc_clusters$cluster)]
+
+pvc_clusters <- split(res.pvc_clusters, f = res.pvc_clusters$clust)
+names(pvc_clusters) <- unique(res.pvc_clusters$clust)
+
+res.pvc_clusters <- res.pvc_clusters %>% mutate( direction = 
+                               ifelse(clust %in% c("P1","P2","P3"), "UP","DOWN")
+                               ) 
+
+
+```
+
+
+```{r, get Aplysia aging DE genes}
+
+BSC_tx <- res.bsc_clusters %>% dplyr::select(.,genes, direction) %>% 
+  unique() %>% 
+  mutate(., cell_type = 'excitatory', tissue = "BSC", dataset = "Kron2020") %>%
+  dplyr::rename(., tx = "genes")
+PVC_tx <- res.pvc_clusters %>% dplyr::select(.,genes, direction)%>% 
+  unique() %>% 
+  mutate(., cell_type = 'excitatory', tissue = "PVC", dataset = "Kron2020")%>%
+  dplyr::rename(., tx = "genes")
+
+Greer_PVC<- read.csv("../data/datasets/Greer2019_DE_genes.csv", header = TRUE, stringsAsFactors = FALSE) %>% dplyr::select(tx, log2FoldChange, padj) %>%
+  dplyr::filter(padj <= 0.05) %>%
+  mutate(direction = ifelse(log2FoldChange > 0, "UP", "DOWN")) %>%
+  dplyr::select(-log2FoldChange) %>%
+  unique() %>% 
+  mutate( cell_type = 'excitatory', tissue = "PVC", dataset = "Greer2018")
+
+nrow(Greer_PVC)
+nrow(PVC_tx)
+nrow(BSC_tx)
+
+intersect(Greer_PVC$tx, PVC_tx$tx) %>% length()
+intersect(Greer_PVC$tx, BSC_tx$tx) %>% length()
+intersect(PVC_tx$tx, BSC_tx$tx) %>% length()
+
+Aplysia_Aging_DE <- full_join(Greer_PVC %>% dplyr::select(tx, direction) %>% dplyr::rename(Greer_PVC = "direction"),
+           PVC_tx %>% dplyr::select(tx, direction) %>% dplyr::rename(Kron_PVC = "direction"), by = "tx") %>%
+  full_join(BSC_tx %>% dplyr::select(tx, direction) %>% dplyr::rename(Kron_BSC = "direction"), by = "tx") %>% 
+  mutate(tx_version = tx,
+         tx = str_remove(tx, "[.][0-9]")
+  ) %>%
+  select(-tx_version) %>%
+  inner_join(AcTxAnot)
+  
+
+# Aplysia_Aging_DE <- full_join(Greer_PVC %>% dplyr::select(tx, direction) %>% dplyr::rename(Greer_PVC = "direction"), 
+#            PVC_tx %>% dplyr::select(tx, direction) %>% dplyr::rename(Kron_PVC = "direction"), by = "tx") %>%
+#   full_join(BSC_tx %>% dplyr::select(tx, direction) %>% dplyr::rename(Kron_BSC = "direction"), by = "tx") %>%
+#   left_join(AcTx2Symbol) %>%
+#   dplyr::select(SYMBOL, UNIPROT, tx, prot, everything()) %>% arrange(SYMBOL)
+
+
+```
+
+```{r import Li et al and wrangle, echo = FALSE, message=FALSE, error=FALSE }
+
+Li<- read.csv("../data/Li_et_al_2015_Alz_DE_Meta_Frontal_Cortex.csv", header = TRUE, stringsAsFactors = FALSE) %>%
+  as.data.frame() %>%
+  mutate(
+    GSE5281= stringr::str_sub(effect, start =1L, end = 1L),
+    GSE48350= stringr::str_sub(effect, start =2L, end = 2L),
+    GSE36980= stringr::str_sub(effect, start =3L, end = 3L),
+    GSE15222= stringr::str_sub(effect, start =4L, end = 4L),
+    GSE44770= stringr::str_sub(effect, start =5L, end = 5L),
+    GSE3300 =stringr::str_sub(effect, start =6L, end = 6L) ,
+  ) %>%
+  dplyr::filter(., Pval.adj <= 0.05)
+Li[Li=="-"] <- "DOWN"
+Li[Li=="+"] <- "UP"
+Li[Li == "?"] <- NA
+
+Li <- Li %>% dplyr::select(Entrez.Gene,Symbol, GSE5281, GSE48350, GSE36980, GSE15222, GSE44770, GSE3300) %>%
+   dplyr::mutate(tissue = 'frontal cortex', dataset = "Li2015")
+
+Li$Entrez.Gene <- as.character(Li$Entrez.Gene)
+
+```
+
+
+```{r}
+
+
+Aplysia_Aging_DE %>% select(gene,tx,prot,evalue,UNIPROT,Hs_Gene,ENTREZID,Greer_PVC,Kron_PVC,Kron_BSC) %>%
+  full_join(.,
+    right_join(
+             AcTxAnot %>% select(gene,tx,prot,evalue,UNIPROT,Hs_Gene, ENTREZID),
+             Li %>% select(Entrez.Gene, Symbol, GSE5281, GSE48350, GSE36980, GSE15222, GSE44770, GSE3300),
+             by = c("ENTREZID" = "Entrez.Gene")
+  )
+  )%>% arrange(., Greer_PVC, Kron_PVC, Kron_BSC, GSE5281, GSE48350, GSE36980, GSE15222, GSE44770, GSE3300) %>% 
+  unique %>%
+  select(gene, tx, prot, evalue, UNIPROT, Hs_Gene, Symbol, ENTREZID, everything()) %>%
+  mutate(
+    Aplysia = paste(Greer_PVC, Kron_PVC, Kron_BSC),
+    Human = paste(GSE5281, GSE48350, GSE36980, GSE15222, GSE44770, GSE3300),
+    UP_Aplysia =  str_count(Aplysia, "UP"),
+    DOWN_Aplysia = str_count(Aplysia, "DOWN"),
+    UP_Human =  str_count(Human, "UP"),
+    DOWN_Human = str_count(Human, "DOWN"),
+    SCORE_Aplysia = UP_Aplysia - DOWN_Aplysia,
+    SCORE_Human = UP_Human - DOWN_Human,
+    Total_SCORE = SCORE_Aplysia + SCORE_Human
+  ) %>%
+  select(-Aplysia, - Human) %>%
+  arrange(SCORE_Aplysia, SCORE_Human, Total_SCORE) %>%
+  write.table(., file = "../results/AplysiaAgingDE_Li_intersect_full.tab", sep = "\t", quote = FALSE, row.names = FALSE)
+
+
+```
+
+
+```{r}
+
+uniprot2hsa <- read.csv("../data/annotation_data/unirpto2hsa.csv", header = TRUE)
+uniprot2hsa <- uniprot2hsa %>% mutate(
+  UNIPROT = str_remove(UNIPROT, "up:")
+)
+
+hsaset <- Aplysia_Aging_DE %>% select(gene,tx,prot,evalue,UNIPROT,Hs_Gene,ENTREZID,Greer_PVC,Kron_PVC,Kron_BSC) %>%
+  full_join(.,
+    right_join(
+             AcTxAnot %>% select(gene,tx,prot,evalue,UNIPROT,Hs_Gene, ENTREZID),
+             Li %>% select(Entrez.Gene, Symbol, GSE5281, GSE48350, GSE36980, GSE15222, GSE44770, GSE3300),
+             by = c("ENTREZID" = "Entrez.Gene")
+  )
+  )%>% arrange(., Greer_PVC, Kron_PVC, Kron_BSC, GSE5281, GSE48350, GSE36980, GSE15222, GSE44770, GSE3300) %>% 
+  unique %>%
+  select(gene, tx, prot, evalue, UNIPROT, Hs_Gene, Symbol, ENTREZID, everything()) %>%
+  mutate(
+    Aplysia = paste(Greer_PVC, Kron_PVC, Kron_BSC),
+    Human = paste(GSE5281, GSE48350, GSE36980, GSE15222, GSE44770, GSE3300),
+    UP_Aplysia =  str_count(Aplysia, "UP"),
+    DOWN_Aplysia = str_count(Aplysia, "DOWN"),
+    UP_Human =  str_count(Human, "UP"),
+    DOWN_Human = str_count(Human, "DOWN"),
+    SCORE_Aplysia = UP_Aplysia - DOWN_Aplysia,
+    SCORE_Human = UP_Human - DOWN_Human,
+    Total_SCORE = SCORE_Aplysia + SCORE_Human
+  ) %>% arrange(., Greer_PVC, Kron_PVC, Kron_BSC, GSE5281, GSE48350, GSE36980, GSE15222, GSE44770, GSE3300) %>% 
+  unique %>%
+  filter( (UP_Aplysia >=2 | DOWN_Aplysia >= 2) & (UP_Human >= 4 | DOWN_Human >= 4 ) ) %>%
+  select(UNIPROT, Greer_PVC, Kron_PVC, Kron_BSC, GSE5281, GSE48350, GSE36980, GSE15222, GSE44770, GSE3300) %>%
+  inner_join(uniprot2hsa) %>%
+  select(has, Greer_PVC, Kron_PVC, Kron_BSC, GSE5281, GSE48350, GSE36980, GSE15222, GSE44770, GSE3300) %>%
+  unique()
+
+hsaset[hsaset=="DOWN"]<- -1
+hsaset[hsaset=="UP"]<- 1
+hsaset[is.na(hsaset)]<- 0
+hsaset <- hsaset %>% mutate(has = str_remove(has, "hsa:"))
+
+rownames(hsaset) <- NULL
+
+#hsaset %>% write.table("../results/hsa_mapping.txt", sep = "\t", row.names = FALSE)
+hsaset %>% column_to_rownames("has")
+
+hsaset %>% filter( has %in% hsaset[hsaset$has %>% duplicated %>% which(),]$has) %>% arrange(has)
+
+library("pathview")
+
+pathview(gene.data = hsaset %>% distinct(has, .keep_all = TRUE) %>% column_to_rownames("has"),gene.idtype = "KEGG",
+         low = "cornflowerblue", 
+         mid = "grey90", 
+         high = "tomato",
+         pathway.id = "hsa04720", #hsa04620 TLR singaling
+         species = "hsa",
+         keys.align = "y",
+         multi.stat = TRUE,
+         same.layer = TRUE)
+
+
+```
+
+
+
+```{r}
+
+overlap <- inner_join(Aplysia_Aging_DE, Li, by = c("ENTREZID" = "Entrez.Gene")) %>%
+  dplyr::select(Hs_Gene, UNIPROT, tx, prot, everything()) %>% 
+  arrange(Hs_Gene) %>%
+  dplyr::select(-c("UNIPROT","prot","dataset", "tissue", "evalue", "product","ENTREZID")) %>%
+  pivot_longer(., cols = -c(Hs_Gene,tx, Symbol), names_to = "Dataset", values_to ="DE_dir") %>%
+  mutate(organism = ifelse(str_detect(Dataset, "C"), "Aplysia", "Human")) %>%
+  group_by(Hs_Gene, tx, organism, Symbol) %>%
+  summarise(up = length(which(DE_dir == "UP")),
+            down = length(which(DE_dir == "DOWN")),
+            na = length(which(is.na(DE_dir))) ) %>%
+  ungroup %>%
+  pivot_wider(data =., id_cols = c("tx", "Hs_Gene", "Symbol"), names_from = organism, values_from = c("up", "down")) %>%
+  dplyr::filter((up_Aplysia >=2 & up_Human >=5) | (down_Aplysia >= 2 & down_Human >= 5)) %>%
+  arrange(up_Aplysia) %>% filter(down_Aplysia >= 2 | up_Aplysia >= 2) 
+
+
+overlap %>% 
+  inner_join(AcTxAnot %>% select(tx,prot, evalue, UNIPROT) %>% group_by(tx,prot, UNIPROT) %>% filter(evalue == min(evalue))) %>%
+  select(tx, prot, evalue, UNIPROT, Hs_Gene, Symbol, everything()) %>%
+  write.table(., file = "../results/AplysiaAgingDE_Li_intersect.tab", sep = "\t", quote = FALSE, row.names = FALSE)
+  
+
+```
+
+
+

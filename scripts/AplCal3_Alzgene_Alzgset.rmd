@@ -1,0 +1,666 @@
+---
+title: "AplCal3_Alzgene_Alzgset"
+author: "Nick Kron"
+date: "12/2/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages, echo=FALSE, message=FALSE, error=FALSE}
+
+library(tidyverse)
+
+```
+
+```{r convert GFF3 to tabular, echo=FALSE, message=FALSE, error=FALSE}
+
+AplCal3GFF <-
+  read.table(
+    file = "../data/annotation_data/GCF_000002075.1_AplCal3.0_genomic.gff",
+    header = FALSE,
+    stringsAsFactors = FALSE,
+    #comment.char = "",
+    skip = 8,
+    strip.white = TRUE, 
+    blank.lines.skip = TRUE, 
+    flush = TRUE,
+    fill = FALSE,
+    quote = "",
+    sep = "\t"
+  )  %>% `colnames<-` (c(
+    "seqid",
+    "source",
+    "type",
+    "start",
+    "end",
+    "score",
+    "strand",
+    "phase",
+    "attributes"
+  ))
+
+
+
+AplCal3_gene <- AplCal3GFF %>%
+  filter(type == "gene") %>%
+  #  head() %>%
+  select(attributes) %>%
+  mutate(
+    gene = str_extract(string = attributes, pattern = ";gene=[aA-zZ0-9./ -]+;") %>% str_remove(string =  ., pattern = "gene=") %>% str_remove_all(string =  ., pattern = ";")
+  ) %>%
+  select(-attributes) %>% unique()
+
+AplCal3_mRNA <- AplCal3GFF %>%
+  filter(type == "mRNA") %>%
+  #  head() %>%
+  select(attributes) %>%
+  mutate(
+    gene = str_extract(string = attributes, pattern = ";gene=[aA-zZ0-9./ -]+;") %>% str_remove(string =  ., pattern = "gene=") %>% str_remove_all(string =  ., pattern = ";"),
+    tx = str_extract(string = attributes, pattern = ";Name=[XN][MR]_[0-9]{6,9}.[0-9 -]+;") %>% str_remove(string =  ., pattern = "Name=") %>% str_remove_all(string =  ., pattern = ";")
+  ) %>%
+  select(-attributes) %>% unique()
+
+AplCal3_CDS <- AplCal3GFF %>% 
+  filter(type == "CDS") %>% 
+#  head() %>%
+  select(attributes) %>%
+    mutate(
+      gene = str_extract(string = attributes, pattern = ";gene=[aA-zZ0-9./ -]+;") %>% str_remove(string =  ., pattern = "gene=")%>% str_remove_all(string =  ., pattern = ";"),
+      tx = str_extract(string = attributes, pattern = ";Parent=rna-[XN][MR]_[0-9]{6,9}.[0-9 -]+;") %>% str_remove(string =  ., pattern = "Parent=rna-")%>% str_remove_all(string =  ., pattern = ";"),
+      prot = str_extract(string = attributes, pattern = ";Name=[XNY][P]_[0-9]{6,9}.[0-9];") %>% str_remove(string =  ., pattern = "Name=")%>% str_remove_all(string = ., pattern = ";"),
+      product = str_extract(string = attributes, pattern = ";product=[aA-zZ0-9_,.%()\\/:'\\[\\]+ -]+;") %>% str_remove(string =  ., pattern = "product=")%>% str_remove_all(string =  ., pattern = ";") %>% str_replace(string = ., pattern = "%2C", replacement = ","),
+      type = "CDS"
+    ) %>%
+  select(-attributes) %>% unique() %>% filter(! is.na(prot))
+
+AplCal3_transcript <- AplCal3GFF %>%
+  filter(type == "transcript") %>%
+  #  head() %>%
+  select(attributes) %>%
+  mutate(
+    gene = str_extract(string = attributes, pattern = ";gene=[aA-zZ0-9./ -]+;") %>% str_remove(string =  ., pattern = "gene=") %>% str_remove_all(string =  ., pattern = ";"),
+    tx = str_extract(string = attributes, pattern = ";Name=[XN][MR]_[0-9]{6,9}.[0-9 -]+;") %>% str_remove(string =  ., pattern = "Name=") %>% str_remove_all(string =  ., pattern = ";"),
+    product = str_extract(string = attributes, pattern = ";product=[aA-zZ0-9_,.%()\\/:'\\[\\]+ -]+;") %>% str_remove(string =  ., pattern = "product=") %>% str_remove_all(string =  ., pattern = ";") %>% str_replace(string = ., pattern = "%2C", replacement = ","),
+    type = "misc_RNA",
+  ) %>%
+  select(-attributes) %>% unique()
+
+AplCal3_lnc_RNA <- AplCal3GFF %>%
+  filter(type == "lnc_RNA") %>%
+  #  head() %>%
+  select(attributes) %>%
+  mutate(
+    gene = str_extract(string = attributes, pattern = ";gene=[aA-zZ0-9./ -]+;") %>% str_remove(string =  ., pattern = "gene=") %>% str_remove_all(string =  ., pattern = ";"),
+    tx = str_extract(string = attributes, pattern = ";Name=[XN][MR]_[0-9]{6,9}.[0-9 -]+;") %>% str_remove(string =  ., pattern = "Name=") %>% str_remove_all(string =  ., pattern = ";"),
+    type = "lnc_RNA"
+  ) %>%
+  select(-attributes) %>% unique()
+
+AplCal3_tRNA <- AplCal3GFF %>%
+  filter(type == "tRNA") %>%
+  #  head() %>%
+  select(attributes) %>%
+  mutate(
+    gene = str_extract(string = attributes, pattern = ";gene=[aA-zZ0-9./ -]+;") %>% str_remove(string =  ., pattern = "gene=") %>% str_remove_all(string =  ., pattern = ";"),
+    product = str_extract(string = attributes, pattern = ";product=.*") %>% str_remove(string =  ., pattern = "product=") %>% str_remove_all(string =  ., pattern = ";"),
+    type = "tRNA"
+  ) %>%
+  select(-attributes) %>% unique() %>% filter(! is.na(gene))
+
+AplCal3_snRNA <- AplCal3GFF %>%
+  filter(type == "snRNA") %>%
+  #  head() %>%
+  select(attributes) %>%
+  mutate(
+    gene = str_extract(string = attributes, pattern = ";gene=[aA-zZ0-9./ -]+;") %>% str_remove(string =  ., pattern = "gene=") %>% str_remove_all(string =  ., pattern = ";"),
+    tx = str_extract(string = attributes, pattern = ";Name=[XN][MR]_[0-9]{6,9}.[0-9 -]+;") %>% str_remove(string =  ., pattern = "Name=") %>% str_remove_all(string =  ., pattern = ";"),
+    product = str_extract(string = attributes, pattern = ";product=.*;") %>% str_remove(string =  ., pattern = "product=") %>% str_remove_all(string =  ., pattern = ";"),
+    type = "snRNA"
+  ) %>%
+  select(-attributes) %>% unique()
+
+AplCal3_snoRNA <- AplCal3GFF %>%
+  filter(type == "snoRNA") %>%
+  #  head() %>%
+  select(attributes) %>%
+  mutate(
+    gene = str_extract(string = attributes, pattern = ";gene=[aA-zZ0-9./ -]+;") %>% str_remove(string =  ., pattern = "gene=") %>% str_remove_all(string =  ., pattern = ";"),
+    tx = str_extract(string = attributes, pattern = ";Name=[XN][MR]_[0-9]{6,9}.[0-9 -]+;") %>% str_remove(string =  ., pattern = "Name=") %>% str_remove_all(string =  ., pattern = ";"),
+    product = str_extract(string = attributes, pattern = ";product=.*;") %>% str_remove(string =  ., pattern = "product=") %>% str_remove_all(string =  ., pattern = ";"),
+    type = "snoRNA"
+  ) %>%
+  select(-attributes) %>% unique()
+
+AplCal3_guide_RNA <- AplCal3GFF %>%
+  filter(type == "guide_RNA") %>%
+  #  head() %>%
+  select(attributes) %>%
+  mutate(
+    gene = str_extract(string = attributes, pattern = ";gene=[aA-zZ0-9./ -]+;") %>% str_remove(string =  ., pattern = "gene=") %>% str_remove_all(string =  ., pattern = ";"),
+    tx = str_extract(string = attributes, pattern = ";Name=[XN][MR]_[0-9]{6,9}.[0-9 -]+;") %>% str_remove(string =  ., pattern = "Name=") %>% str_remove_all(string =  ., pattern = ";"),
+    product = str_extract(string = attributes, pattern = ";product=.*;") %>% str_remove(string =  ., pattern = "product=") %>% str_remove_all(string =  ., pattern = ";"),
+    type = "guide_RNA"
+  ) %>%
+  select(-attributes) %>% unique()
+
+AplCal3_rRNA <- AplCal3GFF %>%
+  filter(type == "rRNA") %>%
+  #  head() %>%
+  select(attributes) %>%
+  mutate(
+    gene = str_extract(string = attributes, pattern = ";gene=[aA-zZ0-9./ -]+;") %>% str_remove(string =  ., pattern = "gene=") %>% str_remove_all(string =  ., pattern = ";"),
+    tx = str_extract(string = attributes, pattern = ";Name=[XN][MR]_[0-9]{6,9}.[0-9 -]+;") %>% str_remove(string =  ., pattern = "Name=") %>% str_remove_all(string =  ., pattern = ";"),
+    product = str_extract(string = attributes, pattern = ";product=.*;") %>% str_remove(string =  ., pattern = "product=") %>% str_remove_all(string =  ., pattern = ";"),
+    type = "rRNA"
+  ) %>%
+  select(-attributes) %>% unique()%>% filter(!is.na(gene))
+
+
+nrow(AplCal3_gene)
+#21092
+nrow(AplCal3_mRNA)
+#26644
+nrow(AplCal3_CDS)
+#26676
+nrow(AplCal3_transcript)
+#229
+nrow(AplCal3_lnc_RNA)
+#1667
+nrow(AplCal3_tRNA)
+#47
+nrow(AplCal3_snRNA)
+#66
+nrow(AplCal3_snoRNA)
+#110
+nrow(AplCal3_guide_RNA)
+#3
+nrow(AplCal3_rRNA)
+#28
+
+
+
+Complete_AplCal_map <-
+  AplCal3_CDS %>%
+  full_join(., AplCal3_transcript) %>%
+  full_join(., AplCal3_lnc_RNA) %>%
+  full_join(., AplCal3_tRNA) %>%
+  full_join(., AplCal3_snRNA) %>%
+  full_join(., AplCal3_snoRNA) %>%
+  full_join(., AplCal3_guide_RNA) %>%
+  full_join(., AplCal3_rRNA) %>%
+  left_join(., AplCal3_transcript) %>%
+  full_join(., AplCal3_mRNA) %>%
+  full_join(., AplCal3_gene) %>%
+  unique()
+
+
+
+(AplCal3GFF %>% filter(type == "gene") %>% filter(str_detect(.$attributes, "LOC106012211")))[,9]
+AplCal3_lnc_RNA %>% filter(gene %in% (Complete_AplCal_map%>% filter(is.na(type)))$gene) #1,667
+
+Complete_AplCal_map %>% group_by(type) %>% summarise(count =n())
+Complete_AplCal_map %>% filter(is.na(type))
+
+# CDS	26676		good	
+# guide_RNA	3			good
+# lnc_RNA	1667			good
+# misc_RNA	229			good
+# rRNA	28			good
+# snoRNA	110			good
+# snRNA	66			good
+# tRNA	47      good
+
+Complete_AplCal_map$gene %>% unique() %>% length()
+#21093 vs #21092
+
+Complete_AplCal_map %>% filter( ! gene %in% AplCal3_gene$gene)
+# 2 genes from the transcript group
+
+AplCal3_gene %>% filter( ! gene %in% Complete_AplCal_map$gene)
+#LOC100533416 one gene missing
+
+nrow(AplCal3_CDS)
+#26676
+nrow(AplCal3_transcript)
+#229
+nrow(AplCal3_lnc_RNA)
+#1667
+nrow(AplCal3_tRNA)
+#47
+nrow(AplCal3_snRNA)
+#66
+nrow(AplCal3_snoRNA)
+#110
+nrow(AplCal3_guide_RNA)
+#3
+nrow(AplCal3_rRNA)
+#28
+
+(AplCal3GFF %>% filter(type %in% c("mRNA","CDS")) %>% filter( str_detect(attributes, "NM_001204711.1")))[,c(9)]
+Complete_AplCal_map %>% filter( str_detect(tx, "NM_001204711.1"))
+#NP_001191640.1,product = CREB-binding protein, type = CDS
+Complete_AplCal_map[which(is.na(Complete_AplCal_map$type)),] #28827
+Complete_AplCal_map[28827,c(3,4,5)] = c("NP_001191640.1", "CREB-binding protein", "CDS")
+Complete_AplCal_map[28827,]
+
+(AplCal3GFF %>% filter(type %in% c("mRNA","CDS")) %>% filter( str_detect(attributes, "NM_001204661.1")))[,c(9)]
+Complete_AplCal_map %>% filter( str_detect(tx, "NM_001204661.1"))
+Complete_AplCal_map[which(is.na(Complete_AplCal_map$type)),] #28828
+# prot = NP_001191590.1, product=fulicin-like neuropeptide precursor, type = CDS
+Complete_AplCal_map[28828,c(3,4,5)] = c("NP_001191590.1", "fulicin-like neuropeptide precursor", "CDS")
+Complete_AplCal_map[28828,]
+
+(AplCal3GFF %>% filter(type %in% c("mRNA","CDS")) %>% filter( str_detect(attributes, "NM_001204700.1")))[,c(9)]
+#prot = NP_001191629.1, product=theromacin, type = CDS
+Complete_AplCal_map %>% filter( str_detect(tx, "NM_001204700.1"))
+Complete_AplCal_map[which(is.na(Complete_AplCal_map$type)),] #28829
+Complete_AplCal_map[28829,c(3,4,5)] = c("NP_001191629.1", "theromacinr", "CDS")
+Complete_AplCal_map[28829,]
+
+Complete_AplCal_map <- Complete_AplCal_map %>% unique()
+Complete_AplCal_map %>% group_by(type) %>% summarise(count =n())
+
+Complete_AplCal_map$gene %>% unique() %>% length()
+#21094
+
+AplCal3_gene %>% unique() %>% nrow()
+#21092
+
+
+Complete_AplCal_map %>% filter(! gene %in% AplCal3_gene$gene)
+
+Complete_AplCal_map <- Complete_AplCal_map %>% mutate(tx_version = tx,
+                               tx = str_remove(tx, "[.][0-9]"),
+                               prot_version = prot,
+                               prot = str_remove(prot, "[.][0-9]"))
+
+ read.table(
+    file = "../data/annotation_data/GCF_000002075.1_AplCal3.0_genomic.gff",
+    header = FALSE,
+    stringsAsFactors = FALSE,
+    comment.char = "",
+    sep = "\t",
+    nrows = 8
+  )
+##gff-version 3				
+#!gff-spec-version 1.21				
+#!processor NCBI annotwriter				
+#!genome-build AplCal3.0				
+#!genome-build-accession NCBI_Assembly:GCF_000002075.1				
+#!annotation-source NCBI Aplysia californica Annotation Release 102				
+##sequence-region NW_004797271.1 1 6102535				
+##species https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=6500
+ 
+comment(Complete_AplCal_map) <- c("##gff-version 3",
+                                  "#!gff-spec-version 1.21",
+                                  "#!processor NCBI annotwriter",
+                                  "#!genome-build AplCal3.0",
+                                  "#!genome-build-accession NCBI_Assembly:GCF_000002075.1",
+                                  "#!annotation-source NCBI Aplysia californica Annotation Release 102",
+                                  "##sequence-region NW_004797271.1 1 6102535",
+                                  "##species https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=6500")
+
+attributes(Complete_AplCal_map)$comment
+
+save(Complete_AplCal_map, file = "../data/r_data/AplCalGFF3v1.21_Tabular.R")
+
+##most modern build of the GFF now tabularized.
+##comments section can be used to access the version info
+##will need to rebuild the annotations
+
+```
+
+```{r check to see if old annot still works, echo=FALSE, message=FALSE, error=FALSE}
+
+load(file = "../data/r_data/AplCalGFF3v1.21_Tabular.R")
+load(file = "../data/r_data/annot.R")
+
+Complete_AplCal_map$prot %>% unique() %>%length() #26658
+Tx2Prot2Kegg$prot %>% unique() %>%length() #27578
+
+intersect(Tx2Prot2Kegg$prot %>% str_remove(.,"[.][0-9]"),Complete_AplCal_map$prot%>% str_remove(.,"[.][0-9]")) %>% length()
+#20771
+setdiff(Tx2Prot2Kegg$prot %>% str_remove(.,"[.][0-9]"),Complete_AplCal_map$prot %>% str_remove(.,"[.][0-9]")) %>% length()
+#6807
+Complete_AplCal_map %>% filter(str_detect(prot,"XP_005088828.1"))
+##NCBI searches show these were removed from the database as part of the annotation pipline 
+
+setdiff(Complete_AplCal_map$prot, Tx2Prot2Kegg$prot)
+
+Tx2Prot2Kegg %>% filter(str_detect(prot,"XP_035826908.1"))
+#NCBI search shows that these have since been added and are not present in the old dataset
+
+##the ghostKOALA is now out of date because the GFF has been updated, need to run again ##
+
+```
+
+```{r, include=FALSE}
+
+AcTx2HsUniProt <- read.table(file = "../data/annotation_data/AcTx2HsUniProt.tab", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+AcTx2HsUniProt <- AcTx2HsUniProt %>% mutate(tx_version = Ac_ref_Tx, tx = str_remove(Ac_ref_Tx, "[.][0-9]"))
+
+setdiff(AcTx2HsUniProt$tx, Complete_AplCal_map$tx) %>% length() #4931
+setdiff(Complete_AplCal_map$tx, AcTx2HsUniProt$tx) %>% length() #12878
+
+##need to build new UNIPROT to AplCal mapping file with BLAST+ --> use most modern version of the Proteome##
+
+```
+
+```{r merge new gff3 data with latest uniprot blast annotation, echo=FALSE, message=FALSE, error=FALSE}
+
+AcProt2HsUniprot <- read.table(file = "../data/annotation_data/AplCal3.0prot2HomoSapiensUNIPROT.txt", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+AcProt2HsUniprot <- AcProt2HsUniprot %>% filter(evalue <= 0.0001)
+
+prot2UNIPROT <- AcProt2HsUniprot %>%
+  select(qseqid, sseqid) %>%
+  mutate(UNIPROT = str_extract(sseqid, pattern = "\\|[aA-zZ,0-9]+\\|") %>% str_remove_all(., "\\|"),
+         Gene = str_extract(sseqid, pattern = "[aA-zZ,0-9]+_HUMAN$")%>% str_remove_all(., "_HUMAN"),
+         prot = str_remove(qseqid, pattern = "[.][0-9 -]+")  )%>%
+  select(-sseqid) %>%
+  rename(prot_version = "qseqid", Hs_Gene = "Gene") %>%
+  unique()
+
+
+intersect(prot2UNIPROT$prot,Complete_AplCal_map$prot) %>% length() #20495
+setdiff(prot2UNIPROT$prot,Complete_AplCal_map$prot) %>% length() #0
+
+intersect(Complete_AplCal_map$prot, prot2UNIPROT$prot) %>% length() #20495
+setdiff(Complete_AplCal_map$prot, prot2UNIPROT$prot) %>% length() #6163
+
+AcTxAnot <- inner_join(Complete_AplCal_map,prot2UNIPROT)
+AcTxAnot$Hs_Gene %>% unique() %>% length() #9116
+AcTxAnot$UNIPROT %>% unique() %>% length() #9116
+AcTxAnot$prot %>% unique() %>% length() #20495
+
+
+#Parkinsons
+#Coexpression of SNCA, SNCAIP, and PRKN result in the formation of Lewy body-like. ubiquitin-positive cytosolic inclusions.
+#PARK1
+AcTxAnot %>% filter(UNIPROT == "P37840") # no
+AcTxAnot %>% filter(str_detect(Hs_Gene, "PARK1")) # no
+AcTxAnot %>% filter(str_detect(product, "Alpha-synuclein")) # no
+#LRRK2/PARK8
+AcTxAnot %>% filter(UNIPROT == "Q5S007") #yes x6
+#PARK7
+AcTxAnot %>% filter(UNIPROT == "Q99497") #yes
+#Parkin
+AcTxAnot %>% filter(str_detect(product, "parkin")) # yes
+AcTxAnot %>% filter(UNIPROT == "O60260") #yes
+#PACRG
+AcTxAnot %>% filter(str_detect(product, "parkin")) # yes
+AcTxAnot %>% filter(UNIPROT == "Q96M98") #yes
+#Synphillin/ SNCAIP
+AcTxAnot %>% filter(UNIPROT == "Q9Y6H5") #yes
+
+#AD
+#PS1
+AcTxAnot %>% filter(UNIPROT == "P49768") #yes
+#PS2
+AcTxAnot %>% filter(UNIPROT == "P49810") #no
+#APP
+AcTxAnot %>% filter(UNIPROT == "P05067") #yes x2
+#TAU
+AcTxAnot %>% filter(UNIPROT == "P10636") #yes x2
+
+
+
+```
+
+```{r load alzheimer's datasets and validate overlap of symbols, echo=FALSE, message=FALSE, error=FALSE}
+
+Alzgset <- read.table(file = "../data/datasets/Hu_et_al_2017_supplement_Alzheimers_gene_list.txt", header = TRUE, stringsAsFactors = FALSE, sep = "\t")
+AlzGene <- read.table(file = "../data/datasets/Alzgene_genes.txt", header = TRUE, stringsAsFactors = FALSE, sep = "\t")
+
+
+nrow(Alzgset) #430
+nrow(AlzGene) #680
+
+
+
+setdiff(Alzgset$Gene_symbol,uniprot2symbol$SYMBOL) %>% length() #31
+Alzgset %>% filter(! Gene_symbol %in% uniprot2symbol$SYMBOL) %>% dplyr::select(Gene_symbol)
+#Alzgset Gene_symbols are uniprot gene identifiers. Will use Uniprot to make a mapping file
+Alzgset$Gene_symbol %>% write.table(file = "../data/annotation_data/Alzgset.txt", quote = FALSE, row.names = FALSE, col.names = FALSE, eol = "\n")
+Alzgset2Uniprot <- read.table(file = "../data/annotation_data/Alzgset_gene2UNIPROT.tab", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+Alzgset2Uniprot <- Alzgset2Uniprot %>% 
+  dplyr::rename(.,Gene_symbol = "yourlist.M20201204A94466D2655679D1FD8953E075198DA81C43253", UNIPROT = "Entry")
+
+Alzgset2Uniprot %>% nrow() #20711
+setdiff(Alzgset$Gene_symbol, Alzgset$Gene_symbol) ## 0 good
+setdiff(Alzgset$Gene_symbol, Alzgset$Gene_symbol) #0 good
+
+
+setdiff(AlzGene$GENEID,uniprot2symbol$SYMBOL) %>% length() #77
+AlzGene %>% filter(! GENEID %in% uniprot2symbol$SYMBOL) %>% dplyr::select(GENEID)
+#AlzGene GENEID are uniprot gene identifiers. Will use Uniprot to make a mapping file
+AlzGene$GENEID %>% write.table(file = "../data/annotation_data/AlzGene.txt", quote = FALSE, row.names = FALSE, col.names = FALSE, eol = "\n")
+##note manually split MPT/STH into sepparate rows MAPT and STH
+AlzGene2Uniprot <- read.table(file = "../data/annotation_data/AlzGene2UNIPROT.tab", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+#AlzGene2Uniprot <- AlzGene2Uniprot %>% filter(Entry %in% uniprot2symbol$UNIPROT)
+AlzGene2Uniprot <- AlzGene2Uniprot %>% 
+  dplyr::rename(.,Gene_symbol = "yourlist.M20201204A94466D2655679D1FD8953E075198DA81C4780X", UNIPROT = "Entry")
+
+AlzGene2Uniprot %>% filter( str_detect(Gene_symbol,",")) %>% nrow() #6
+AlzGene2Uniprot <- AlzGene2Uniprot %>% separate_rows(., Gene_symbol, sep = ",")
+AlzGene2Uniprot %>% nrow() #5133
+setdiff(AlzGene2Uniprot$Gene_symbol, AlzGene$GENEID) %>%length() #0 good
+setdiff(AlzGene2Uniprot$Gene_symbol, AlzGene$GENEID) #expected
+
+setdiff(AlzGene$GENEID, AlzGene2Uniprot$Gene_symbol) %>%length() #27
+setdiff(AlzGene$GENEID, AlzGene2Uniprot$Gene_symbol)
+#all do not produce proteins or pseudogenes except for ZAP128 which is ACOT2, P49753 
+AlzGene2Uniprot <- rbind (AlzGene2Uniprot, c("ZAP128", "P49753"))
+
+AlzGene2Uniprot$Gene_symbol %>% unique() %>% length() #655 protein coding
+Alzgset2Uniprot$Gene_symbol %>% unique() %>% length() #421 protein coding
+AcTxAnot$Hs_Gene%>% unique() %>% length()
+
+dplyr::intersect(AlzGene2Uniprot$Gene_symbol %>% unique(), Alzgset2Uniprot$Gene_symbol %>% unique() ) %>% length() #295
+
+AcTxAnot %>% filter(UNIPROT %in% dplyr::intersect(AlzGene2Uniprot$UNIPROT, AcTxAnot$UNIPROT)) %>% dplyr::select(Hs_Gene) %>% unique() %>%nrow() #364 
+AcTxAnot %>% filter(UNIPROT %in% dplyr::intersect(Alzgset2Uniprot$UNIPROT, AcTxAnot$UNIPROT)) %>% dplyr::select(Hs_Gene) %>% unique() %>%nrow() #219
+
+inner_join(
+AcTxAnot %>% filter(UNIPROT %in% dplyr::intersect(AlzGene2Uniprot$UNIPROT, AcTxAnot$UNIPROT)) %>% dplyr::select(Hs_Gene) %>% unique(),
+AcTxAnot %>% filter(UNIPROT %in% dplyr::intersect(Alzgset2Uniprot$UNIPROT, AcTxAnot$UNIPROT)) %>% dplyr::select(Hs_Gene) %>% unique()
+) %>%nrow() #167
+
+AcTxAnot %>% dplyr::select(Hs_Gene) %>% unique() %>%nrow() 
+
+venn.plot <- VennDiagram::draw.triple.venn(
+  area1 = 655,
+  area2 = 421,
+  area3 = 9116,
+  n12 = 295,
+  n23 = 219,
+  n13 = 364,
+  n123 = 167,
+  category = c("AlzGene", "Alzgset" , "Unique Aplysia-Human Orthologs") ,
+  ind = TRUE,
+  # Output features
+  imagetype = "tiff", 
+  height = 512 ,
+  width = 512 ,
+  resolution = 300,
+  compression = "lzw",
+  
+  margin = 0.05,
+  
+  # Circles
+  lwd = 2,
+  
+  # Numbers
+  cex = 1,
+  fontface = "bold",
+  fontfamily = "sans",
+  
+  # Set names
+  cat.cex = 1,
+  cat.fontface = "bold",
+  cat.default.pos = "outer",
+  cat.pos = c(135, 225, 0),
+  cat.dist = c(0.05, 0.05, 0.02),
+  cat.fontfamily = "sans",
+  rotation = 1,
+  rotation.degree = 180
+) 
+grid::grid.draw(venn.plot)
+grid::grid.newpage()
+ggsave(venn.plot, file="Aplysia_Alzgset_Alzgene_intersect.tiff", device = "tiff")
+
+
+
+
+
+
+```
+
+
+```{r}
+# by = c("Gene_symbol" = "Hs_Gene", "UNIPROT"="UNIPROT")
+
+full_join(AlzGene2Uniprot ,
+Alzgset2Uniprot ) %>%
+  inner_join(., AcTxAnot %>% select(Hs_Gene, gene,tx, product, UNIPROT)) %>% 
+  select(Hs_Gene, Gene_symbol) %>%
+  unique() %>% 
+  select(Gene_symbol) %>% unique() %>% nrow()
+
+# full_join(AlzGene2Uniprot ,
+# Alzgset2Uniprot ) %>%
+#   inner_join(., AcTxAnot %>% select(Hs_Gene, gene,tx, product, UNIPROT)) %>% 
+#   select(Hs_Gene, Gene_symbol) %>%
+#   unique() %>% 
+#   select(Gene_symbol) %>% slice(n = c(23,48,84,138,182,243,291))
+#   duplicated() %>% which()
+#   # ADRA1A				
+#   # BAT1				
+#   # CHRNA7				
+#   # GC				
+#   # KNS2				
+#   # NOS1				
+#   # PSAP
+#   
+# full_join(AlzGene2Uniprot ,
+# Alzgset2Uniprot ) %>%
+#   inner_join(., AcTxAnot %>% select(Hs_Gene, gene,tx, product, UNIPROT)) %>% 
+#   select(Hs_Gene, Gene_symbol) %>%
+#   unique() %>% 
+#   select(Hs_Gene) %>% slice(n = c(137,373,378,387,388,390,393,411,419))
+#   duplicated() %>% which()
+#   # GLCM				
+#   # CDK1				
+#   # DX39B				
+#   # KANL2				
+#   # KLC1				
+#   # MALR1				
+#   # NU5M				
+#   # SGMR1				
+#   # ENTK
+#   
+#   full_join(AlzGene2Uniprot ,
+# Alzgset2Uniprot ) %>%
+#   inner_join(., AcTxAnot %>% select(Hs_Gene, gene,tx, product, UNIPROT)) %>% 
+#   select(Hs_Gene, Gene_symbol) %>%
+#     filter(Hs_Gene %in% c("GLCM","CDK1","DX39B","KANL2","KLC1","MALR1","NU5M","SGMR1","ENTK") |
+#              Gene_symbol %in% c("ADRA1A", "BAT1", "CHRNA7", "GC", "KNS2", "NOS1", "PSAP") 
+#     ) %>%unique()
+  
+full_join(AlzGene2Uniprot %>% mutate(AlzGene = TRUE),
+          Alzgset2Uniprot %>% mutate(Alzgset = TRUE)) %>%
+  inner_join(., AcTxAnot %>% select(gene, tx, prot, product, UNIPROT)) %>%
+  unique() %>%
+  write.table(
+    x = .,
+    file = "../results/AplCal_AlzGene_ALzgset_intersection.tab",
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+
+
+
+```
+
+```{r}
+geneset <- full_join(AlzGene2Uniprot %>% mutate(AlzGene = TRUE),
+          Alzgset2Uniprot %>% mutate(Alzgset = TRUE)) %>%
+  inner_join(., AcTxAnot %>% select(gene, tx, prot, product, UNIPROT)) %>%
+  select(-c("prot", "tx", "product", "gene")) %>%
+  unique() %>%
+  filter(AlzGene == TRUE & Alzgset == TRUE)
+# write.table(x =., file = "../results/AplCal_AlzGene_ALzgset_intersection.tab", sep = "\t", quote = FALSE,row.names = FALSE)
+  
+GOs <- data.frame( go_id =c(
+#tau binding
+"GO:0048156",
+#amyloid-beta binding
+"GO:0001540",
+#BP
+#amyloid-beta metabolic process
+'GO:0050435',
+#amyloid fibril formation
+"GO:1990000",
+#Ab formation
+"GO:0034205",
+#amyloid precursor protein catabolic process
+"GO:0042987",
+#amyloid precursor protein metabolic process
+"GO:0042982",
+#response to amyloid-beta
+"GO:1904645",
+#regulation of amyloid-beta formation
+"GO:1902003",
+#amyloid-beta clearance
+"GO:0097242"
+),
+go_name = c(
+  "tau binding",
+  "amyloid-beta binding",
+  "amyloid-beta metabolic process",
+  "amyloid fibril formation",
+  "Ab formation",
+  "amyloid precursor protein catabolic process",
+  "amyloid precursor protein metabolic process",
+  "response to amyloid-beta",
+  "regulation of amyloid-beta formation",
+  "amyloid-beta clearance"
+),
+Ontology = c(
+  "MF","MF", rep("BP",8)
+)
+)
+
+
+toTable(org.Hs.egGO) %>% data.frame(stringsAsFactors = FALSE) %>% filter(go_id %in% GOs$go_id) %>%
+  inner_join(.,
+             toTable(org.Hs.egUNIPROT)%>% data.frame(stringsAsFactors = FALSE) %>% filter(uniprot_id %in% geneset$UNIPROT)
+  ) %>%
+  inner_join(.,toTable(org.Hs.egGENENAME) %>% data.frame(stringsAsFactors = FALSE)) %>%
+  inner_join(geneset, by = c("uniprot_id" = "UNIPROT")) %>% dplyr::select(-Evidence) %>%
+  unique() %>%
+  inner_join(GOs) %>%
+  unique() %>%
+  group_by(uniprot_id, Gene_symbol,gene_name, AlzGene, Alzgset,) %>%
+  arrange(go_name,Gene_symbol) %>%
+  dplyr::summarise(go_ids = paste(go_id,collapse = ", "), go_names = paste(go_name, collapse = ", ")) %>%
+  inner_join(.,
+             AcTxAnot %>% dplyr::select(gene, tx, prot, product, UNIPROT), 
+             by = c("uniprot_id" = "UNIPROT")) %>%
+  group_by(uniprot_id,Gene_symbol, gene_name, go_ids, go_names, AlzGene, Alzgset) %>% dplyr::summarise(
+    Ac_genes = paste(gene, collapse = ", "),
+    Ac_tx = paste(tx, collapse = ", "),
+    Ac_prot = paste(prot, collapse = ", "),
+  ) %>% ungroup %>%
+  dplyr::select(Gene_symbol, gene_name, Ac_genes, Ac_tx, Ac_prot, uniprot_id, go_ids, go_names) %>%
+  arrange(go_names,Gene_symbol) %>%
+  write.table(., file = "../results/AplCal_AlzGene_Alzgset_intersection_Ab_Tau_genes.tab", sep = "\t")
+
+
+```
+
