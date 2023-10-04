@@ -5,6 +5,7 @@ This repository contains all code used for the  analysis of gene differential ex
 
 The associated publication can be found here:  
 Kron NS, Fieber LA. Aplysia Neurons as a Model of Alzheimer's Disease: Shared Genes and Differential Expression. J Mol Neurosci. 2022 Feb;72(2):287-302. doi: 10.1007/s12031-021-01918-3. Epub 2021 Oct 18. PMID: 34664226; PMCID: PMC8840921.
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8840921/
 
 Author: Nicholas Kron - n.kron@umiami.edu  
 Maintainer: Nicholas Kron - n.kron@umiami.edu  
